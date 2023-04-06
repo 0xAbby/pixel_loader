@@ -6,23 +6,28 @@
 #		-	Pixel 7 / 7 pro
 #
 #		The loader was tested in IDA Pro version 7.6 - 8.1
-#   Author:
+#   @Author:
 #       Abdullah (https://github.com/0xAbby) 20-Mar-2023 - Initial Implementation
 
 import idc
 import idaapi
+import ida_ida
+import ida_entry
 import ida_segment
 import ida_name
 import ida_bytes
 import ida_ua
+import ida_typeinf
 import os
 import struct
 
-# functions table (each entry is 16 bytes)
-#	Function offset:  64bit
-#	function size:    32bit
-#	func name offset: 32bit
+# Read function table and set function names.
 def resolve_func_table(offset):
+	'''functions table (each entry is 16 bytes)
+		 Function offset:  64bit
+		 function size:    32bit
+		 func name offset: 32bit
+	'''
 	size_offset = ida_bytes.get_word(offset - 0xC)
 	print("# PixelAblLoader: size of function table: \t", hex(size_offset))
 	print("# PixelAblLoader: Function table start:  \t", hex(offset))
@@ -33,8 +38,13 @@ def resolve_func_table(offset):
 	# end of function address table followed by a table for function names
 	print("# PixelAblLoader: Functions table ends: \t", hex(address_table_end))
 
+	# preparing to set function table struct type.
+	#ida_ida.inf_set_cc_cm(ida_typeinf.CM_N64)   # compiler pointer size
+	_type = idc.parse_decl("func_table_entry", 0)
+	
 	# For each function in the table, get its offset,
-	# Tell IDA to analyze/make it code, then find its name and set it
+	# Tell IDA to analyze/make it code, then set func name.
+
 	while address_table_start < address_table_end:
 		# get function offset
 		func_offset = ida_bytes.get_bytes(address_table_start, 8)
@@ -50,6 +60,8 @@ def resolve_func_table(offset):
 		idc.create_strlit(func_name_addr, idc.BADADDR)
 		func_name_len = ida_bytes.get_max_strlit_length(func_name_addr, idc.STRTYPE_C, ida_bytes.ALOPT_IGNHEADS)
 		funct_str = ida_bytes.get_strlit_contents(func_name_addr, func_name_len, idc.STRTYPE_C).decode()
+		#if funct_str == "pixel_loader_entry":
+		#	ida_entry.add_entry(func_offset_bytes, func_offset_bytes, funct_str, True, 0)
 
 		# analyze/set function to code, set name, mark offset / value in table.
 		ida_ua.create_insn(func_offset_bytes)
@@ -59,8 +71,7 @@ def resolve_func_table(offset):
 		ida_bytes.create_dword(address_table_start+12, 4) 
 		
 		# Set data structure for each function entry
-		#  _type = idc.parse_decl("func_struct", 0)
-		#  idc.apply_type(address_table_start, _type, 0)
+		idc.apply_type(address_table_start, _type, 0)
 		
 		# next entry in functions table (entry is 16 byte long)
 		address_table_start += 16
@@ -76,9 +87,11 @@ def move_segm(a,b,c,d):
  
 # Determine whether the blob is Pixel ABL file or not
 def accept_file(blob, filename):
-	buffer = blob.read(0x50)
-	if buffer.find(b'\x00\x00\x80\xF8\x00\x00\xFF\xFF'):
-		return {"format": "Pixel 6, 7, 8 bootloader", 
+	buffer = blob.read(0xb000)
+	
+	offset_count = buffer.count(b'\x80\xF8\x00\x00\xFF\xFF') 
+	if offset_count > 3:
+		return {"format": "Pixel bootloader (ABL)", 
 				"processor": "arm", 
 				"options":1 | idaapi.ACCEPT_FIRST}	
 				
@@ -88,21 +101,10 @@ def create_segment(start, end, bitness, name, segType):
 	seg = idaapi.segment_t()
 	seg.start_ea = start
 	seg.end_ea =  end
+	seg.bitness = bitness
 	
-	if idaapi.IDA_SDK_VERSION <= 760:
-		seg.bitness = bitness
-		idaapi.add_segm_ex(seg, name, segType, 0)
-	elif idaapi.IDA_SDK_VERSION >= 800:
-		print("DEBUG name is: ", name)
-		print("DEBUG segtype is: ", segType)
-		print("DEBUG bitness is:", bitness)
-		
-		print("setting bitness on ida pro 8.x <")
-		idaapi.add_segm_ex(seg, name, segType, 0)
-		
-		print("now addressing mode")
-		idc.set_segm_addressing(start, bitness)
-	
+	idaapi.add_segm_ex(seg, name, segType, 0)
+
 
 # given a start/end address, search for 'bytes_str'
 def search_bytes(start_ea, end_ea, bytes_str):
@@ -148,12 +150,44 @@ def find_func_table(filesize_):
 		probably not valid ABL, or newer unsupported version''')
 		return False, False
 
+
+def create_structs():
+	def_structs = {
+	"""struct fastboot_table_entry { 
+		unsigned __int64 *command_name;  
+		unsigned __int64 unk1;  
+		unsigned __int64 unk2;  
+		void *func_pointer; 
+		};
+		""",
+	""" struct fastbootvar_table_entry {
+		  unsigned __int64 *command_name;
+		  unsigned __int64 unk;
+		  void 	  *command_pointr;
+		};
+	""",
+	"""struct func_table_entry {
+		unsigned __int64 *func_pointer;
+		unsigned __int32 func_size;
+		unsigned __int32 name_offset;
+		};
+		"""}
+
+	print("# PixelAblLoader: creating C-style struct defintions.")
+	for struct in def_structs:
+		ida_typeinf.idc_parse_types(struct, 0)
+
+
+def resolve_fastboot_table():
+	pass
+
 # main loader function
 def load_file(binaryBlob, neflags, format):
 	base_addr = 0xFFFF0000F8800000
 	
-	# set processor 
+	# set processor as ARM (little endian) / 64 bit mode
 	idaapi.set_processor_type('arm', idaapi.SETPROC_LOADER)
+	ida_ida.inf_set_64bit(True)
 	
 	filesize_ = get_file_size(binaryBlob)
 	create_segment(0, filesize_, 2, "BLOB", "DATA")
@@ -166,32 +200,19 @@ def load_file(binaryBlob, neflags, format):
 	if not func_table_offset:
 		print("# PixelAblLoader: failed, existing")
 		return -1
-	
-	# adjust code / data segments / update base address
-	if idaapi.IDA_SDK_VERSION >= 800:
-		ida_segment.del_segm(0, 0)
-		print("deleted segment")
-		create_segment(base_addr, end_of_code_segment, 2, "ABL_CODE", "CODE")
-		create_segment(end_of_code_segment, filesize_ + base_addr, 2, "ABL_DATA", "DATA")
-	else:
-		create_segment(0, (end_of_code_segment - base_addr), 2, "ABL_CODE", "CODE")
-		create_segment((end_of_code_segment - base_addr), filesize_, 2, "ABL_DATA", "DATA")
 		
+	# adjust code and data segments / update base address
+	create_segment(0, (end_of_code_segment - base_addr), 2, "ABL_CODE", "CODE")
+	create_segment((end_of_code_segment - base_addr), filesize_, 2, "ABL_DATA", "DATA")
 	ida_segment.rebase_program(base_addr, 0 )	
+	
+	# create releavant data structures from C-style definitions
+	create_structs()
 	
 	# set function' names / and tell ida pro to make each function into code 
 	resolve_func_table(func_table_offset + base_addr)
 	
-	# create releavant data structures from C-style definitions
-	
-	# Optional: Mark hash constants (sha256/sha512) / CRC32
-	
-	# Optional: Mark hash constants lz4 files by their magic bytes
-	
-	# Optional: set fastboot command structures table 
-	
-	# optional: set fastboot get var structures table 
-	
-	# optional: extra testing against other versions
+	# find and set fastboot commands and var table structs
+	resolve_fastboot_table()
 	
 	return 1
