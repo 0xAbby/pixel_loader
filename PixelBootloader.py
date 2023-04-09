@@ -87,10 +87,14 @@ def move_segm(a,b,c,d):
  
 # Determine whether the blob is Pixel ABL file or not
 def accept_file(blob, filename):
-	buffer = blob.read(0xb000)
+	buffer = blob.read(0x70)
+	# find instruction bytes for these operations int 
+	# the first 0x70 bytes (this needs to be improved somehow in the future)
+	mrs_bytes = [b'\xD5\x38\x42\x5C', 	# 5C 42 38 D5    MRS   X28, CurrentEL
+							 b'\xD5\x38\x10\x09', 	# 09 10 38 D5    MRS   X9, SCTLR_EL1
+							 b'\xD5\x18\x10\x09' ] 	# 09 10 18 D5    MSR   SCTLR_EL1, X9
 	
-	offset_count = buffer.count(b'\x80\xF8\x00\x00\xFF\xFF') 
-	if offset_count > 3:
+	if buffer.find(mrs_bytes[0]) and buffer.find(mrs_bytes[1]) and buffer.find(mrs_bytes[2]) :
 		return {"format": "Pixel bootloader (ABL)", 
 				"processor": "arm", 
 				"options":1 | idaapi.ACCEPT_FIRST}	
