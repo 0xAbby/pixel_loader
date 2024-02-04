@@ -42,3 +42,7 @@ After the loader has been installed, this is the results:
 
 ![Example 1](./screenshot/idapro83-abl3.PNG)
 
+
+PS: the labeling/translation of operands in MRS/MSR instructions is done by this plugin:
+
+https://github.com/NeatMonster/AMIE
