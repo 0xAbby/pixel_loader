@@ -4,9 +4,10 @@
 #		for Google Pixel Phones, tested against abl binaries from:
 #		-	Pixel 6 / 6a / 6 pro
 #		-	Pixel 7 / 7 pro
+#		- Pixel 8
 #
-#		The loader was tested in IDA Pro version 7.6 - 8.1
-#   @Author:
+#		The loader was tested in IDA Pro version 7.6 - 8.3
+#   Author:
 #       Abdullah (https://github.com/0xAbby) 20-Mar-2023 - Initial Implementation
 
 import idc
@@ -90,16 +91,19 @@ def accept_file(blob, filename):
 	buffer = blob.read(0x70)
 	# find instruction bytes for these operations int 
 	# the first 0x70 bytes (this needs to be improved somehow in the future)
-	mrs_bytes = [b'\xD5\x38\x42\x5C', 	# 5C 42 38 D5    MRS   X28, CurrentEL
-							 b'\xD5\x38\x10\x09', 	# 09 10 38 D5    MRS   X9, SCTLR_EL1
-							 b'\xD5\x18\x10\x09' ] 	# 09 10 18 D5    MSR   SCTLR_EL1, X9
+	# 5C 42 38 D5    MRS   X28, CurrentEL
+	# 09 10 38 D5    MRS   X9, SCTLR_EL1
+	# 09 10 18 D5    MSR   SCTLR_EL1, X9
+	mrs_bytes = [b'\xD5\x38\x42\x5C', b'\xD5\x38\x10\x09', b'\xD5\x18\x10\x09' ]
 	
-	if buffer.find(mrs_bytes[0]) and buffer.find(mrs_bytes[1]) and buffer.find(mrs_bytes[2]) :
-		return {"format": "Pixel bootloader (ABL)", 
-				"processor": "arm", 
-				"options":1 | idaapi.ACCEPT_FIRST}	
-				
-	return 0
+	for bytes in mrs_bytes:
+		if not buffer.find(bytes):
+			return 0
+			
+	
+	return {"format": "Pixel bootloader (ABL)", 
+			"processor": "arm", 
+			"options":1 | idaapi.ACCEPT_FIRST}
 
 def create_segment(start, end, bitness, name, segType):
 	seg = idaapi.segment_t()
