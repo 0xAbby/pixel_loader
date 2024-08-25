@@ -6,7 +6,9 @@ Tested on bootloaders from:
 
   * Pixel 6 / 6 Pro and 6a
   * Pixel 7 / 7 Pro
+  * Pixel 8 / 8 Pro
 
+NOTE: currently the loader doesn't support some of the changes added to the ABL since June 5th 2024, It'll be fixed later.
 
 ### Installation
 
