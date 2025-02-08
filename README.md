@@ -20,6 +20,12 @@ $IDAPRO/loaders/
 Where $IDAPRO is the folder/directory where the ida executable is located.
 For example on Windows that would be something like ```C:\Program Files\IDA Pro 8.3\loaders\```
 
+the bootloader's content can be extracted using [Jonthan Levin's tool ImjTool](https://newandroidbook.com/tools/imjtool.html)
+For example:
+```
+./imjtool.ELF64 bootloader-oriole-slider-1.3-10674934.img extract
+```
+Inside the "extracted" folder you can find the binary blob for "abl" boot stage.
 Afterwards, whenever a pixel ABL is loaded into ida pro, the loader module will show up in the options, simply click ok.
 
 ![First time](./screenshot/idapro83-abl-firsttime.PNG)
